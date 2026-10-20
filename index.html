@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home | R26-IT-169 Smart Waste</title>
+<meta name="description" content="R26-IT-169, SLIIT IT4010 Research Project: Edge-Based Energy-Efficient IoT Smart Waste Management System.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 30 36' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='2' y='4' width='26' height='4' rx='1.5' fill='%23E9B627'/%3E%3Crect x='11' y='1' width='8' height='3' rx='1' fill='%23E9B627'/%3E%3Cpath d='M4.5 10h21l-2 24h-17z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M6.4 22h17.2l-1 11h-15.2z' fill='%230E8A6A'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/ibm-plex-sans-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html"><svg viewBox="0 0 30 36" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="26" height="4" rx="1.5" fill="#E9B627"/><rect x="11" y="1" width="8" height="3" rx="1" fill="#E9B627"/><path d="M4.5 10h21l-2 24h-17z" fill="none" stroke="#fff" stroke-width="2"/><path d="M6.4 22h17.2l-1 11h-15.2z" fill="#0E8A6A"/></svg><span>R26-IT-169 Smart Waste<small>SLIIT IT4010 Research Project 2026</small></span></a>
+    <nav aria-label="Main"><ul>
+<li><a href="index.html" aria-current="page">Home</a></li>
+<li><a href="domain.html">Domain</a></li>
+<li><a href="milestones.html">Milestones</a></li>
+<li><a href="documents.html">Documents</a></li>
+<li><a href="presentations.html">Presentations</a></li>
+<li><a href="about.html">About Us</a></li>
+<li><a href="contact.html">Contact Us</a></li>
+    </ul></nav>
+  </div>
+</header>
+<section class="hero"><div class="wrap hero-grid">
+<div>
+<p class="meta">SLIIT IT4010 Research Project 2026, group R26-IT-169, Software Systems and Technologies</p>
+<h1>Edge-Based Energy-Efficient IoT Smart Waste Management System</h1>
+<p class="lead">A smart-bin node that decides for itself which readings are worth sending. It stays quiet
+while nothing changes and reports at once when a bin nears overflow.</p>
+<p class="actions"><a class="btn" href="domain.html#results">See the results</a><a class="btn ghost" href="documents.html">Read the documents</a></p>
+</div>
+<figure><img src="img/node-bench.jpg" width="840" height="1120" alt="Bench build of a bin node: an ESP-12E board wired to an HC-SR04 ultrasonic sensor and a DHT22 temperature and humidity sensor">
+<figcaption>Bench build of the low-cost node: ESP-12E, HC-SR04 ultrasonic sensor and DHT22.</figcaption></figure>
+</div></section>
+<main>
+<div class="wrap">
+
+<h2 style="margin-top:8px">Abstract</h2>
+<p>IoT smart bins usually stream raw sensor readings to a server at a fixed rate. Most of those
+messages repeat what the server already knows, and on a battery-powered bin each transmission costs
+energy. This project moves the "should I send?" decision onto the bin itself. Each node runs a
+rule-based state machine that combines four mechanisms: a transmission interval that adapts to battery
+level (AIMD), a send-on-delta deadband that tightens when the bin fills quickly, an urgency override
+that always reports near-overflow or gas events, and a maximum data age per state so the server never
+loses track of a bin. A laptop-based edge gateway collects, validates and ranks the bins and feeds an
+operator dashboard. The system is evaluated against a fixed-interval baseline on the same hardware:
+in steady state the node sent 85.7% fewer messages, and both test alerts were reported within seconds.</p>
+
+<h2>How a node decides, every second</h2>
+<p>The node checks four states in a fixed order. Urgency is checked first, so saving energy never delays an alert.</p>
+<div class="states">
+  <div class="state s-alert"><p class="order">Checked 1st</p><h3>ALERT</h3><p>Fill at 80% or more, gas above threshold, or filling faster than 10% an hour.</p><p class="floor">Sends at once, then at least every 60 s.</p></div>
+  <div class="state s-conserve"><p class="order">Checked 2nd</p><h3>CONSERVE</h3><p>Battery at 30% or less. Intervals grow to save energy.</p><p class="floor">Still reports at least every 15 min.</p></div>
+  <div class="state s-active"><p class="order">Checked 3rd</p><h3>ACTIVE</h3><p>Fill at 60% or more. The bin needs watching.</p><p class="floor">Reports at least every 5 min.</p></div>
+  <div class="state s-stable"><p class="order">Otherwise</p><h3>STABLE</h3><p>Nothing is changing. The node stays quiet.</p><p class="floor">Reports at least every 30 min.</p></div>
+</div>
+<p class="note-line">In every state the node also sends early when the fill moves by more than its deadband, which narrows from 10% towards 1% as the bin fills faster.</p>
+
+<h2>Results</h2>
+<figure class="frame" style="margin-top:0"><div class="scroll-x"><svg class="chart" viewBox="0 0 700 226" role="img" aria-labelledby="cT cD" xmlns="http://www.w3.org/2000/svg">
+<title id="cT">Transmissions per hour, bin01, 20 October 2026</title>
+<desc id="cD">Fixed 60 s baseline: 56 per hour. Adaptive policy with a quiet bin: 8 per hour, an 85.7% reduction. Adaptive policy with two alert events in 20 minutes: 66 per hour.</desc>
+<line x1="230.0" y1="14" x2="230.0" y2="196" stroke="#D6DDD9" stroke-width="1"/><text x="230.0" y="216" font-size="12" fill="#56635F" text-anchor="middle">0</text><line x1="341.4" y1="14" x2="341.4" y2="196" stroke="#D6DDD9" stroke-width="1"/><text x="341.4" y="216" font-size="12" fill="#56635F" text-anchor="middle">20</text><line x1="452.9" y1="14" x2="452.9" y2="196" stroke="#D6DDD9" stroke-width="1"/><text x="452.9" y="216" font-size="12" fill="#56635F" text-anchor="middle">40</text><line x1="564.3" y1="14" x2="564.3" y2="196" stroke="#D6DDD9" stroke-width="1"/><text x="564.3" y="216" font-size="12" fill="#56635F" text-anchor="middle">60</text><text x="0" y="39" font-size="15" font-weight="600" fill="#1B2422">Fixed 60 s baseline</text><text x="0" y="57" font-size="13" fill="#56635F">15 min run</text><g><title>Baseline, fixed 60 s: 14 transmissions in 15 min (56 per hour)</title><path d="M230,24 h308.0 a4,4 0 0 1 4,4 v26 a4,4 0 0 1 -4,4 h-308.0 z" fill="#B7791F"/><text x="550.0" y="46" font-size="15" font-weight="600" fill="#1B2422">56 per hour</text></g><text x="0" y="103" font-size="15" font-weight="600" fill="#1B2422">Adaptive policy</text><text x="0" y="121" font-size="13" fill="#56635F">quiet bin, 15 min</text><g><title>Adaptive, quiet bin: 2 transmissions in 15 min (8 per hour)</title><path d="M230,88 h40.6 a4,4 0 0 1 4,4 v26 a4,4 0 0 1 -4,4 h-40.6 z" fill="#0E8A6A"/><text x="282.6" y="110" font-size="15" font-weight="600" fill="#1B2422">8 per hour</text></g><text x="0" y="167" font-size="15" font-weight="600" fill="#1B2422">Adaptive policy</text><text x="0" y="185" font-size="13" fill="#56635F">two alert events, 20 min</text><g><title>Adaptive, two alert events: 22 transmissions in 20 min (66 per hour)</title><path d="M230,152 h363.7 a4,4 0 0 1 4,4 v26 a4,4 0 0 1 -4,4 h-363.7 z" fill="#0E8A6A"/><text x="605.7" y="174" font-size="15" font-weight="600" fill="#1B2422">66 per hour</text></g>
+<line x1="230" y1="14" x2="230" y2="196" stroke="#56635F" stroke-width="1"/>
+</svg></div>
+<figcaption>Transmissions per hour from bin01 on 20 October 2026, measured at the gateway. Hover a bar for the raw counts.</figcaption></figure>
+<div class="two-col">
+  <div>
+    <p><strong>85.7% fewer transmissions</strong> in steady state: 2 messages in 15 minutes against 14 for a fixed 60 s node (target: at least 60%).</p>
+    <p><strong>2 of 2 alerts</strong> reported within seconds, with no false alerts.</p>
+  </div>
+  <div>
+    <p>Under a stress case with two alerts in 20 minutes the node sent more than the baseline. That is the
+    urgency rule working as designed, made worse by a small test bin where one sensor step is 2.7% of fill.</p>
+    <p><a href="domain.html#results">Full results and what they mean</a></p>
+  </div>
+</div>
+
+<h2>Architecture</h2>
+<figure class="frame" style="margin-top:0"><div class="scroll-x arch"><svg viewBox="0 0 860 300" role="img" aria-labelledby="archT archD" xmlns="http://www.w3.org/2000/svg" font-family="Plex Sans, Segoe UI, Arial, sans-serif">
+<title id="archT">System architecture</title>
+<desc id="archD">Bin nodes decide locally whether to transmit and publish over MQTT to an edge gateway, which stores, ranks and serves data to the dashboard and mobile app.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#155E4F"/></marker></defs>
+<g fill="#E4EEEA" stroke="#155E4F" stroke-width="1.5">
+<rect x="10" y="20" width="275" height="260" rx="10"/>
+<rect x="330" y="20" width="260" height="260" rx="10"/>
+<rect x="635" y="20" width="215" height="260" rx="10"/>
+</g>
+<g fill="#1B2422" font-size="15" font-weight="700">
+<text x="24" y="46">1. Smart-bin nodes</text>
+<text x="344" y="46">2. Edge gateway (laptop)</text>
+<text x="649" y="46">3. Users</text>
+</g>
+<g fill="#1B2422" font-size="12.5">
+<text x="24" y="74">ESP32 bin01: fill, temp/RH, gas, power</text>
+<text x="24" y="94">ESP8266 bin02: fill, temp/RH, power</text>
+<text x="24" y="124">Every 1 s: read sensors, run 4-state FSM</text>
+<text x="24" y="144">STABLE / ACTIVE / ALERT / CONSERVE</text>
+<text x="24" y="174">Decide: send now or stay quiet</text>
+<text x="24" y="194">AIMD interval, dynamic deadband,</text>
+<text x="24" y="214">urgency override, AoI floor</text>
+<text x="24" y="244">INA219 measures node energy</text>
+<text x="344" y="74">Mosquitto MQTT broker</text>
+<text x="344" y="94">Node.js + Express + Socket.io</text>
+<text x="344" y="114">SQLite evidence store (run labels)</text>
+<text x="344" y="144">Validates every reading</text>
+<text x="344" y="164">Ranks bins by priority, then fill</text>
+<text x="344" y="184">Network link-quality monitor</text>
+<text x="344" y="204">Serves the dashboard on the LAN</text>
+<text x="344" y="234">Commands: mode, battery, lease</text>
+<text x="649" y="74">React operator dashboard</text>
+<text x="649" y="94">live state, decision trace,</text>
+<text x="649" y="114">TX counts, power readings</text>
+<text x="649" y="144">Mobile view (home users)</text>
+<text x="649" y="174">Evaluation scripts</text>
+<text x="649" y="194">TCR, alert recall, energy</text>
+</g>
+<g stroke="#155E4F" stroke-width="2" fill="none" marker-end="url(#ar)">
+<line x1="287" y1="150" x2="326" y2="150"/>
+<line x1="592" y1="150" x2="631" y2="150"/>
+</g>
+<g fill="#155E4F" font-size="12" font-weight="600">
+<text x="289" y="140">MQTT</text>
+<text x="594" y="140">REST</text>
+</g>
+</svg></div>
+<figcaption>Nodes decide locally and publish over MQTT. The edge gateway stores, validates and ranks every reading and serves the dashboard on the local network.</figcaption></figure>
+
+<h2>The prototype</h2>
+<figure class="shot" style="margin-top:0"><img src="img/dashboard.jpg" width="1265" height="840" loading="lazy" alt="Operator dashboard showing bin01 and bin02, both in the ALERT state at 82% and 87% fill">
+<figcaption>Operator dashboard served by the edge gateway, with both physical nodes reporting. Each bin card shows its state, the time since the last reading and the reporting policy.</figcaption></figure>
+
+<h2>Components</h2>
+<p>Each node is built from low-cost modules. bin01 carries the full sensor set; bin02 is the low-cost variant without the gas sensor.</p>
+<div class="parts">
+  <figure class="part"><div class="part-img"><img src="img/parts/esp32-devkitc.jpg" width="306" height="300" loading="lazy" alt="ESP32-DevKitC development board with an ESP32-WROOM-32E module"></div><figcaption><strong>ESP32-DevKitC</strong><span>Controller for the full-sensor node. Reads the sensors and runs the four-state policy every second, then reports over Wi-Fi.</span><span class="where">Used on bin01</span></figcaption></figure>
+  <figure class="part"><div class="part-img"><img src="img/parts/nodemcu-esp8266.jpg" width="152" height="300" loading="lazy" alt="NodeMCU development board with an ESP-12E ESP8266 module"></div><figcaption><strong>NodeMCU (ESP-12E)</strong><span>Controller for the low-cost node. Runs the same policy on cheaper hardware.</span><span class="where">Used on bin02</span></figcaption></figure>
+  <figure class="part"><div class="part-img"><img src="img/parts/hc-sr04.jpg" width="520" height="272" loading="lazy" alt="HC-SR04 ultrasonic distance sensor with two transducers"></div><figcaption><strong>HC-SR04 ultrasonic sensor</strong><span>Measures the distance from the lid to the waste. Fill level is worked out from the calibrated bin depth.</span><span class="where">Used on bin01 and bin02</span></figcaption></figure>
+  <figure class="part"><div class="part-img"><img src="img/parts/dht22.jpg" width="160" height="300" loading="lazy" alt="DHT22 temperature and humidity sensor"></div><figcaption><strong>DHT22</strong><span>Temperature and relative humidity inside the bin.</span><span class="where">Used on bin01 and bin02</span></figcaption></figure>
+  <figure class="part"><div class="part-img"><img src="img/parts/mq-gas-sensor.jpg" width="215" height="300" loading="lazy" alt="MQ-series gas sensor with a metal mesh cap"></div><figcaption><strong>MQ-135 gas sensor</strong><span>Detects odour and gas build-up. A high reading puts the node straight into ALERT. Its heater is the largest power draw.</span><span class="where">Used on bin01</span></figcaption></figure>
+  <figure class="part"><div class="part-img"><img src="img/parts/ina219.jpg" width="405" height="300" loading="lazy" alt="INA219 current and voltage sensor breakout board"></div><figcaption><strong>INA219 current sensor</strong><span>Sits on the 5 V supply and measures the node's current, voltage and power for the energy results.</span><span class="where">Used on bin01 and bin02</span></figcaption></figure>
+</div>
+<p class="credit">Module illustrations from the Fritzing parts library and the Adafruit Fritzing library (CC BY-SA 3.0) and the Espressif esp-dev-kits documentation (CC BY-SA 4.0). They show each module type, not the exact boards used.</p>
+
+<h2>Explore</h2>
+<ul class="explore">
+  <li><a href="domain.html">Domain</a><p>Literature survey, research gap, objectives, methodology, results and technologies.</p></li>
+  <li><a href="milestones.html">Milestones</a><p>Every assessment with its date and mark allocation.</p></li>
+  <li><a href="documents.html">Documents</a><p>Topic assessment, proposal, logs, checklists and the final documents.</p></li>
+  <li><a href="presentations.html">Presentations</a><p>Slides from the proposal, progress and final presentations.</p></li>
+</ul>
+
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <span>R26-IT-169, Perera G.M.T (IT21196638), Sri Lanka Institute of Information Technology</span>
+    <span>Academic information website, separate from the research product.</span>
+  </div>
+</footer>
+</body>
+</html>
