@@ -171,16 +171,130 @@ fill, above the 1% deadband floor, which explains the stress-case result; the fi
 one sensor step and scale the fill-rate rule to the bin depth.</p>
 
 <h2 id="tech">Technologies used</h2>
+<p><strong>Design principles for the stack.</strong> Keep it low cost: every node part is a common, inexpensive
+module and the software is built on free, open-source tools. Keep it local: the nodes, broker, gateway and dashboard
+all run on one local network with no cloud service. Keep every decision explainable: the policy is a set of fixed
+rules with no machine learning, so each transmission can be traced to a logged cause. Keep every reading: the gateway
+stores each message with its receive time and run label and refuses to delete readings, so the results can be
+checked again.</p>
+
+<h3 id="tech-hardware">Hardware</h3>
 <div class="table-scroll"><table>
-<tr><th>Layer</th><th>Technology</th><th>Why</th></tr>
-<tr><td>Bin node</td><td>ESP32 and ESP8266, PlatformIO, Arduino framework (C++)</td><td>Low cost, built-in Wi-Fi, enough headroom for the policy.</td></tr>
-<tr><td>Sensors</td><td>HC-SR04 ultrasonic, DHT22, MQ-135, INA219</td><td>Fill level, environment, gas/odour and measured power.</td></tr>
-<tr><td>Messaging</td><td>MQTT (Mosquitto, local broker)</td><td>Lightweight publish/subscribe suited to constrained devices.</td></tr>
-<tr><td>Gateway</td><td>Node.js, Express, Socket.io, SQLite (better-sqlite3)</td><td>Simple, local, and stores every reading as evaluation evidence.</td></tr>
-<tr><td>Dashboard</td><td>React, Vite, Tailwind CSS, Recharts</td><td>Live operator view with decision trace and charts.</td></tr>
-<tr><td>Mobile</td><td>Phone-sized web view served by the gateway</td><td>Check bins from a phone on the same network, no app install needed.</td></tr>
-<tr><td>Evaluation</td><td>Python (analysis and figures)</td><td>Reproducible metrics from the database.</td></tr>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>ESP32-DevKitC (bin01)</td><td>ESP32-D0WD-V3, 4 MB flash</td><td>Controller for the full-sensor node. Runs the four-state policy every second and publishes over Wi-Fi. Measured draw of the whole node: about 199 mA and 950 mW.</td><td>Built-in Wi-Fi and enough ADC1 inputs for the gas sensor at low cost. An Arduino Uno was rejected because it needs a separate Wi-Fi module and has too little memory for the policy and JSON messages.</td></tr>
+<tr><td>NodeMCU ESP-12E (bin02)</td><td>ESP8266EX, 4 MB flash</td><td>Controller for the low-cost node. Runs the same policy file as bin01. Measured draw: 23 to 74 mA with Wi-Fi on.</td><td>A very low-cost Wi-Fi board, so it tests the policy on weaker hardware. A second ESP32 was rejected because it would not show that the policy runs on a cheaper chip.</td></tr>
+<tr><td>HC-SR04 ultrasonic sensor</td><td>Module</td><td>Measures the distance from the lid to the waste. Fill is worked out from the bin depth set by the Calibrate command.</td><td>Non-contact and inexpensive. An infrared distance sensor was rejected because its reading depends on the colour and surface of the waste.</td></tr>
+<tr><td>DHT22</td><td>Module</td><td>Temperature and relative humidity inside the bin.</td><td>Digital output on one wire. The DHT11 is cheaper but less accurate.</td></tr>
+<tr><td>MQ-135 gas sensor</td><td>Analogue module on ADC1, bin01 only</td><td>Odour and gas build-up. A reading above the threshold puts the node into ALERT.</td><td>Low-cost, broad-response air-quality sensor. An MQ-5 was also fitted and then removed because its readings were unstable.</td></tr>
+<tr><td>INA219 current sensor</td><td>I2C module, 0.1 ohm shunt, 32 V / 2 A range</td><td>Sits on the 5 V supply path and measures bus voltage, current, power and an energy counter at 10 Hz. The values travel in every message.</td><td>Power is logged with each reading, so energy can be matched to the policy state. A plug-in USB power meter was rejected because its readings cannot be logged with the data.</td></tr>
+<tr><td>USB power bank</td><td>5 V USB</td><td>Powers each node during the evaluation, so the INA219 measures the whole node.</td><td>Safe and easy to swap. The battery level the policy uses is sent by the gateway, because the ESP32 ADC2 pins cannot be read while Wi-Fi is on.</td></tr>
 </table></div>
+
+<h3 id="tech-firmware">Node firmware</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>PlatformIO</td><td>espressif8266 platform 4.2.1 (bin02); espressif32 platform not pinned (bin01)</td><td>Builds and flashes both firmware trees, with one build environment per board.</td><td>Board settings and library versions live in a text file, so a build can be repeated. The Arduino IDE was rejected because it hides these settings.</td></tr>
+<tr><td>Arduino framework (C++)</td><td>From the PlatformIO platforms</td><td>Common API on both chips. The state machine file fsm.h is identical on bin01 and bin02.</td><td>One code base for two chips. Espressif's ESP-IDF was rejected because it only targets the ESP32.</td></tr>
+<tr><td>Wi-Fi: WiFi and WiFiMulti (ESP32), ESP8266WiFi and ESP8266WiFiMulti (ESP8266)</td><td>Bundled with the framework</td><td>Joins the first available known network. bin01 remembers the last access point and channel so it reconnects faster.</td><td>Built in, with fallback to a second network.</td></tr>
+<tr><td>PubSubClient (MQTT client)</td><td>2.8, MQTT 3.1.1</td><td>Publishes readings and subscribes to the command topics.</td><td>Small, and works the same on the ESP32 and the ESP8266.</td></tr>
+<tr><td>ArduinoJson</td><td>7.4.3</td><td>Builds each reading and parses commands. The message size is checked at compile time against the 1024-byte MQTT buffer.</td><td>Readable messages that the gateway can validate field by field. A binary format such as MessagePack was rejected because it is hard to inspect during testing.</td></tr>
+<tr><td>BoundedDHT (DHT22 driver)</td><td>1.4.7-local.1 (bin01), 1.4.7-local.2 (bin02)</td><td>Reads the DHT22.</td><td>A local copy of the Adafruit DHT sensor library 1.4.7, changed so that a failed read cannot stall the one-second loop.</td></tr>
+<tr><td>INA219 driver</td><td>Own code over I2C (Wire)</td><td>Reads the INA219 registers and keeps the energy counter.</td><td>Small and fully understood, with no extra library.</td></tr>
+<tr><td>Preferences (bin01), EEPROM emulation (bin02)</td><td>Bundled with the framework</td><td>Stores the calibrated bin depth in flash so it survives a restart. bin02 adds a magic number and a checksum.</td><td>The depth changes with every installation, so it is stored on the node instead of being compiled in.</td></tr>
+</table></div>
+
+<h3 id="tech-messaging">Messaging</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>MQTT</td><td>3.1.1</td><td>Carries all traffic between nodes and gateway: readings up, commands down.</td><td>Publish and subscribe with a small header suits constrained devices. HTTP was rejected because each node would have to poll for commands.</td></tr>
+<tr><td>Mosquitto broker</td><td>Not pinned, port 1883</td><td>Local broker on the gateway laptop.</td><td>Free, light and standard. A cloud broker was rejected so the system works without internet.</td></tr>
+</table></div>
+<div class="table-scroll" style="margin-top:12px"><table>
+<tr><th>Topic</th><th>Direction</th><th>Content</th></tr>
+<tr><td>bin/&lbrace;node&rbrace;/data</td><td>Node to gateway</td><td>One reading as JSON</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/mode</td><td>Gateway to node</td><td>ADAPTIVE or BASELINE</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/battery</td><td>Gateway to node</td><td>Battery percentage for the policy (simulated)</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/override</td><td>Gateway to node</td><td>Short "report faster" lease with an interval and an expiry</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/ack</td><td>Node to gateway</td><td>Reply to a lease</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/calibrate</td><td>Gateway to node</td><td>Calibrate-empty request</td></tr>
+<tr><td>bin/&lbrace;node&rbrace;/calibrate/ack</td><td>Node to gateway</td><td>Measured depth and result</td></tr>
+</table></div>
+<p>Example reading on bin/bin01/data, shortened. The values come from the quiet run on 20 October 2026.</p>
+<div class="table-scroll"><pre style="margin:0;padding:12px;background:var(--surface);border:1px solid var(--line);font-size:13px">{"node_id":"bin01","ts":3357132,"fill_pct":0,"temp_c":31.4,"humidity":75,
+ "gas_135":391,"gas_5":null,"bus_voltage_v":4.8,"current_ma":190.6,"power_mw":914,
+ "batt_pct":80,"state":"STABLE","mode":"ADAPTIVE","interval":300,"deadband":10,
+ "dfdt":0,"tx_trigger":"timer","state_cause":"stable"}</pre></div>
+
+<h3 id="tech-gateway">Edge gateway</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>Node.js</td><td>24</td><td>Runs the gateway on the laptop.</td><td>Event-driven, which suits many small MQTT messages, and the same language as the dashboard.</td></tr>
+<tr><td>Express</td><td>4.22.1</td><td>REST API. Also serves the built dashboard and the /m view.</td><td>Minimal and well known.</td></tr>
+<tr><td>Socket.io</td><td>4.8.3</td><td>Pushes each reading, a gateway snapshot every 2 s, network samples, calibrations and reports to open browsers.</td><td>Live updates without polling. Plain polling was rejected because it delays alerts on the dashboard.</td></tr>
+<tr><td>better-sqlite3 (SQLite)</td><td>13.0.3, WAL journal mode</td><td>Evidence store for readings, commands, network samples, calibrations and reports, each with a run label.</td><td>One file and no database server. WAL lets the dashboard read while new readings are written. A database server or cloud store was rejected as one more service to run.</td></tr>
+<tr><td>MQTT.js (mqtt)</td><td>5.15.1</td><td>Subscribes to bin/+/data, bin/+/ack and bin/+/calibrate/ack, and publishes commands.</td><td>The standard MQTT client for Node.js.</td></tr>
+<tr><td>cors</td><td>2.8.6</td><td>Lets only the dashboard's own address call the API during development.</td><td>Limits cross-site calls.</td></tr>
+<tr><td>Network monitor</td><td>Node.js built-ins (os, child_process)</td><td>Samples Wi-Fi signal, ping latency to the router and packet loss, and stores them as network samples.</td><td>Uses the tools already on the laptop (netsh and ping), so no extra agent is needed.</td></tr>
+</table></div>
+<p>For every message the gateway checks the node ID and fields and ignores retained or malformed messages. It
+stores the reading with its receive time and the current run label, and a reset request is refused so evidence is
+never deleted. It ranks the bins: urgent bins first, then stale or faulty ones, then ACTIVE bins, then the rest,
+with fuller bins first inside each group. It sends a short "report faster" lease (60 to 300 s interval, 60 to 600 s
+lifetime) only to a node that is fresh and eligible.</p>
+<div class="table-scroll"><table>
+<tr><th>Endpoint</th><th>Purpose</th></tr>
+<tr><td>GET /api/health</td><td>Broker connection and the latest network sample</td></tr>
+<tr><td>GET /api/gateway</td><td>Ranked bins and the current decision</td></tr>
+<tr><td>GET /api/readings</td><td>Stored readings, filtered by node and run label</td></tr>
+<tr><td>GET /api/stats</td><td>Transmission counts and energy per mode</td></tr>
+<tr><td>GET /api/network</td><td>Link-quality samples</td></tr>
+<tr><td>POST /api/mode/:id</td><td>Switch a node between ADAPTIVE and BASELINE</td></tr>
+<tr><td>POST /api/battery/:id</td><td>Set the simulated battery level</td></tr>
+<tr><td>POST /api/override/:id</td><td>Send a bounded "report faster" lease</td></tr>
+<tr><td>POST /api/gateway/dispatch</td><td>Send a lease to the top-ranked bin</td></tr>
+<tr><td>POST /api/nodes/:id/calibrate</td><td>Ask a node to measure its empty depth</td></tr>
+<tr><td>GET /api/calibrations</td><td>Calibration results</td></tr>
+<tr><td>GET and POST /api/reports</td><td>Problem reports from the mobile view</td></tr>
+<tr><td>GET and POST /api/run</td><td>Read or set the run label</td></tr>
+</table></div>
+
+<h3 id="tech-dashboard">Dashboard and mobile</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>React</td><td>18.3.1</td><td>Operator dashboard at / and the phone view at /m, loaded as separate parts so a phone does not download the charts.</td><td>Components map well to one live card per bin.</td></tr>
+<tr><td>Vite</td><td>5.4.21, React plugin 4.7.0</td><td>Development server and production build. The gateway serves the built files.</td><td>Fast rebuilds. Create React App was rejected because it is no longer maintained.</td></tr>
+<tr><td>Tailwind CSS</td><td>3.4.19, with PostCSS 8.5.14 and Autoprefixer 10.5.0</td><td>Styling for the dashboard and the phone view.</td><td>Styles sit next to the markup, which keeps small changes quick.</td></tr>
+<tr><td>Recharts</td><td>2.15.4</td><td>Line charts in the dashboard.</td><td>Charts built from React components with little code.</td></tr>
+<tr><td>socket.io-client</td><td>4.8.3</td><td>Receives live updates from the gateway.</td><td>Matches the gateway's Socket.io server.</td></tr>
+<tr><td>Mobile view (/m)</td><td>Same build as the dashboard</td><td>Read-only bin status and a problem report form for home users, on any phone browser on the network. Reports are rate limited.</td><td>No app install. A native app was rejected because it would have to be built and installed on each phone.</td></tr>
+</table></div>
+
+<h3 id="tech-eval">Evaluation and analysis</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>Python</td><td>3.13</td><td>Runs the analysis and figure scripts.</td><td>Mature data tools, and the scripts can be rerun on the same database.</td></tr>
+<tr><td>pandas</td><td>Not pinned</td><td>Loads the readings and computes the metrics.</td><td>Standard for table data. A spreadsheet was rejected because its steps cannot be rerun exactly.</td></tr>
+<tr><td>matplotlib</td><td>Not pinned</td><td>Draws the result figures.</td><td>Figures are generated from the same data every time.</td></tr>
+<tr><td>sqlite3</td><td>Python standard library</td><td>Reads the gateway database directly.</td><td>No export step between the gateway and the analysis.</td></tr>
+<tr><td>pyserial</td><td>Not pinned</td><td>Captures a node's serial log during hardware checks.</td><td>Keeps the node's own log next to the gateway data.</td></tr>
+</table></div>
+<p>Metrics produced: transmission count reduction (TCR) against the fixed 60 s baseline, alert recall and alert
+latency against hand-logged events, false alerts, and mean power, current and energy per phase from the INA219, all
+measured. A battery-life factor is also produced from a duty-cycle model and is labelled modelled.</p>
+
+<h3 id="tech-tooling">Development and project tooling</h3>
+<div class="table-scroll"><table>
+<tr><th>Technology</th><th>Version</th><th>Role in this project</th><th>Why chosen (and alternative rejected)</th></tr>
+<tr><td>Git and GitHub</td><td>Repository Minidu-perara/R26-IT-169</td><td>Version control for the firmware, gateway, dashboard and evaluation (Checklist 1).</td><td>Full history of every change, and the README is part of the assessment.</td></tr>
+<tr><td>VS Code with the PlatformIO extension</td><td>Not pinned</td><td>Editing, building, flashing and serial monitoring.</td><td>One editor for C++, JavaScript and Python.</td></tr>
+<tr><td>PowerShell and shell scripts</td><td>Windows PowerShell, bash</td><td>Documented build and flash commands, and a launcher for overnight evaluation runs.</td><td>Repeatable steps on the Windows laptop.</td></tr>
+<tr><td>Claude Code (AI coding assistant)</td><td>Not pinned</td><td>Helped write and refactor the firmware, gateway and analysis code.</td><td>Speeds up implementation. Every result on this site was measured on the hardware and checked by the researcher.</td></tr>
+</table></div>
+
+<p><strong>Security and limitations.</strong> The prototype is built for a trusted local network only. The broker
+accepts anonymous clients, and MQTT, the REST API and the dashboard use no authentication or TLS. Wi-Fi passwords
+are compiled in from a secrets file that is kept out of Git. A real deployment would need MQTT over TLS, per-device
+credentials, authentication on the API and signed over-the-air firmware updates.</p>
 
 </div>
 </main>
